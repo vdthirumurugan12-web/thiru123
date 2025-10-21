@@ -1,0 +1,58 @@
+pipeline {
+    agent any
+    environment {
+        IMAGE_NAME = "yourdockerhubusername/nodejs-cicd-app"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        CONTAINER_NAME = "nodejs-app"
+        EC2_HOST = "ec2-user@<your-ec2-public-ip>"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/<your-repo>.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker push $IMAGE_NAME:$IMAGE_TAG
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to AWS EC2') {
+            steps {
+                sshagent (credentials: ['ec2-ssh-key']) {
+                    sh '''
+                    ssh -o StrictHostKeyChecking=no $EC2_HOST "
+                        docker pull $IMAGE_NAME:$IMAGE_TAG &&
+                        docker stop $CONTAINER_NAME || true &&
+                        docker rm $CONTAINER_NAME || true &&
+                        docker run -d --name $CONTAINER_NAME -p 3000:3000 $IMAGE_NAME:$IMAGE_TAG
+                    "
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployment Successful!"
+        }
+        failure {
+            echo "Pipeline Failed!"
+        }
+    }
+}

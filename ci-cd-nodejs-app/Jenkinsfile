@@ -1,0 +1,40 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "nodejs-cicd-app"
+        CONTAINER_NAME = "nodejs-app"
+        APP_PORT = "3000"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/vdthirumurugan12-web/thiru123.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t $IMAGE_NAME .'
+            }
+        }
+
+        stage('Stop & Remove Old Container') {
+            steps {
+                sh '''
+                    if [ $(docker ps -aq -f name=$CONTAINER_NAME) ]; then
+                        docker stop $CONTAINER_NAME
+                        docker rm $CONTAINER_NAME
+                    fi
+                '''
+            }
+        }
+
+        stage('Run Docker Container') {
+            steps {
+                sh "docker run -d --name $CONTAINER_NAME -p $APP_PORT:$APP_PORT $IMAGE_NAME"
+            }
+        }
+    }
+}
